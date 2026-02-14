@@ -29,9 +29,9 @@ import sys
 from .utils.py3 import map, range, zip, with_metaclass, string_types
 
 # For Python 3.10+ compatibility: collections.Iterable -> collections.abc.Iterable
-if hasattr(collections.abc, 'Iterable'):
+try:
     _Iterable = collections.abc.Iterable
-else:
+except AttributeError:
     _Iterable = collections.Iterable
 from .utils import DotDict
 
