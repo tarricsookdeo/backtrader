@@ -85,12 +85,12 @@ setuptools.setup(
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.2',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
 
         # Operating Systems on which it runs
         'Operating System :: OS Independent',
@@ -98,6 +98,9 @@ setuptools.setup(
 
     # What does your project relate to?
     keywords=['trading', 'development'],
+
+    # Python version requirement
+    python_requires='>=3.8',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().

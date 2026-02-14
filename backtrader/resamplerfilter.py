@@ -22,7 +22,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from .dataseries import TimeFrame, _Bar
 from .utils.py3 import with_metaclass
@@ -52,7 +52,7 @@ class DTFaker(object):
         self.p = self
 
         if forcedata is None:
-            _dtime = datetime.utcnow() + data._timeoffset()
+            _dtime = datetime.now(timezone.utc) + data._timeoffset()
             self._dt = dt = date2num(_dtime)  # utc-like time
             self._dtime = data.num2date(dt)  # localized time
         else:

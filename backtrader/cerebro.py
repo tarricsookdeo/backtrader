@@ -1540,9 +1540,9 @@ class Cerebro(with_metaclass(MetaParams, object)):
             # record starting time and tell feeds to discount the elapsed time
             # from the qcheck value
             drets = []
-            qstart = datetime.datetime.utcnow()
+            qstart = datetime.datetime.now(datetime.timezone.utc)
             for d in datas:
-                qlapse = datetime.datetime.utcnow() - qstart
+                qlapse = datetime.datetime.now(datetime.timezone.utc) - qstart
                 d.do_qcheck(newqcheck, qlapse.total_seconds())
                 drets.append(d.next(ticks=False))
 
