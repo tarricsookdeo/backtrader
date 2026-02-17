@@ -57,7 +57,7 @@ class TestStrategy(bt.Strategy):
             self.buy()
 
 # Create cerebro
- cerebro = bt.Cerebro()
+cerebro = bt.Cerebro()
 cerebro.addstrategy(TestStrategy)
 
 # Create data feed
