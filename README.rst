@@ -1,43 +1,55 @@
 backtrader
 ==========
 
-.. image:: https://img.shields.io/pypi/v/backtrader.svg
-   :alt: PyPi Version
-   :scale: 100%
-   :target: https://pypi.python.org/pypi/backtrader/
-
-..  .. image:: https://img.shields.io/pypi/dm/backtrader.svg
-       :alt: PyPi Monthly Donwloads
-       :scale: 100%
-       :target: https://pypi.python.org/pypi/backtrader/
-
-.. image:: https://img.shields.io/pypi/l/backtrader.svg
-   :alt: License
-   :scale: 100%
-   :target: https://github.com/backtrader/backtrader/blob/master/LICENSE
-.. image:: https://travis-ci.org/backtrader/backtrader.png?branch=master
-   :alt: Travis-ci Build Status
-   :scale: 100%
-   :target: https://travis-ci.org/backtrader/backtrader
-.. image:: https://img.shields.io/pypi/pyversions/backtrader.svg
+.. image:: https://img.shields.io/badge/python-3.8%2B-blue.svg
    :alt: Python versions
    :scale: 100%
-   :target: https://pypi.python.org/pypi/backtrader/
 
-**Yahoo API Note**:
+.. image:: https://img.shields.io/badge/license-GPLv3+-green.svg
+   :alt: License
+   :scale: 100%
+   :target: https://github.com/tarricsookdeo/backtrader/blob/master/LICENSE
 
-  [2018-11-16] After some testing it would seem that data downloads can be
-  again relied upon over the web interface (or API ``v7``)
+A fork of the `original backtrader <https://github.com/mementum/backtrader>`_
+library, maintained for local development and use. This fork is **not published
+to PyPI** — it is installed directly from source.
 
-**Tickets**
+Quick Start
+===========
 
-  The ticket system is (was, actually) more often than not abused to ask for
-  advice about samples.
+Prerequisites: `pipenv <https://pipenv.pypa.io/>`_ must be installed
+(``pip install pipenv``).
 
-For **feedback/questions/...** use the `Community <https://community.backtrader.com>`_
+1. **Clone the repository**::
 
-Here a snippet of a Simple Moving Average CrossOver. It can be done in several
-different ways. Use the docs (and examples) Luke!
+     git clone git@github.com:tarricsookdeo/backtrader.git
+     cd backtrader
+
+2. **Install dependencies and the package**::
+
+     pipenv install -e .
+
+   To include plotting support (``matplotlib``)::
+
+     pipenv install matplotlib
+
+3. **Activate the virtual environment**::
+
+     pipenv shell
+
+4. **Verify the installation**::
+
+     python -c "import backtrader as bt; print(bt.__version__)"
+
+You can also run commands without activating the shell by using ``pipenv run``::
+
+  pipenv run python -c "import backtrader as bt; print(bt.__version__)"
+
+Usage
+=====
+
+Here is a snippet of a Simple Moving Average CrossOver. It can be done in
+several different ways. Use the docs (and examples) Luke!
 ::
 
   from datetime import datetime
@@ -59,12 +71,15 @@ different ways. Use the docs (and examples) Luke!
   cerebro.run()
   cerebro.plot()
 
-Including a full featured chart. Give it a try! This is included in the samples
-as ``sigsmacross/sigsmacross2.py``. Along it is ``sigsmacross.py`` which can be
-parametrized from the command line.
+There are also many sample scripts in the ``samples/`` directory that
+demonstrate various features.
 
-Features:
-=========
+The built-in CLI runner is also available::
+
+  btrun --help
+
+Features
+========
 
 Live Trading and backtesting platform written in Python.
 
@@ -91,8 +106,8 @@ Live Trading and backtesting platform written in Python.
     integration (**deprecated**)
   - Flexible definition of commission schemes
   - Integrated broker simulation with *Market*, *Close*, *Limit*, *Stop*,
-    *StopLimit*, *StopTrail*, *StopTrailLimit*and *OCO* orders, bracket order,
-    slippage, volume filling strategies and continuous cash adjustmet for
+    *StopLimit*, *StopTrail*, *StopTrailLimit* and *OCO* orders, bracket order,
+    slippage, volume filling strategies and continuous cash adjustment for
     future-like instruments
   - Sizers for automated staking
   - Cheat-on-Close and Cheat-on-Open modes
@@ -100,63 +115,63 @@ Live Trading and backtesting platform written in Python.
   - Trading Calendars
   - Plotting (requires matplotlib)
 
-Documentation
-=============
+Requirements
+============
 
-The blog:
-
-  - `Blog <http://www.backtrader.com/blog>`_
-
-Read the full documentation at:
-
-  - `Documentation <http://www.backtrader.com/docu>`_
-
-List of built-in Indicators (122)
-
-  - `Indicators Reference <http://www.backtrader.com/docu/indautoref.html>`_
-
-Python 2/3 Support
-==================
-
-  - Python >= ``3.2``
-
-  - It also works with ``pypy`` and ``pypy3`` (no plotting - ``matplotlib`` is
-    not supported under *pypy*)
+  - Python >= ``3.8``
+  - No external dependencies for core functionality
+  - ``matplotlib`` is optional (for plotting)
 
 Installation
 ============
 
-``backtrader`` is self-contained with no external dependencies (except if you
-want to plot)
+This is a **local-only** package. It is not available on PyPI. It uses
+`pipenv <https://pipenv.pypa.io/>`_ for dependency and environment management.
 
-From *pypi*:
+**From source**::
 
-  - ``pip install backtrader``
+  git clone git@github.com:tarricsookdeo/backtrader.git
+  cd backtrader
+  pipenv install -e .
 
-  - ``pip install backtrader[plotting]``
+To include plotting support::
 
-    If ``matplotlib`` is not installed and you wish to do some plotting
+  pipenv install matplotlib
 
-.. note:: The minimum matplotlib version is ``1.4.1``
-
-An example for *IB* Data Feeds/Trading:
+For *IB* Data Feeds/Trading:
 
   - ``IbPy`` doesn't seem to be in PyPi. Do either::
 
-      pip install git+https://github.com/blampe/IbPy.git
+      pipenv install git+https://github.com/blampe/IbPy.git#egg=IbPy
 
     or (if ``git`` is not available in your system)::
 
-      pip install https://github.com/blampe/IbPy/archive/master.zip
+      pipenv install https://github.com/blampe/IbPy/archive/master.zip
 
 For other functionalities like: ``Visual Chart``, ``Oanda``, ``TA-Lib``, check
-the dependencies in the documentation.
+the dependencies in the upstream documentation.
 
-From source:
+Running Tests
+=============
 
-  - Place the *backtrader* directory found in the sources inside your project
+::
 
-Version numbering
+  pipenv install pytest --dev
+  pipenv run pytest tests/
+
+Documentation
+=============
+
+Upstream documentation from the original project:
+
+  - `Blog <http://www.backtrader.com/blog>`_
+  - `Documentation <http://www.backtrader.com/docu>`_
+  - `Indicators Reference <http://www.backtrader.com/docu/indautoref.html>`_ (122 built-in indicators)
+  - `Community <https://community.backtrader.com>`_
+
+See `MODERNIZATION.md <MODERNIZATION.md>`_ for planned improvements in this fork.
+
+Version Numbering
 =================
 
 X.Y.Z.I
@@ -168,3 +183,10 @@ X.Y.Z.I
   - Z: Revision version number. To be changed for documentation updates, small
     changes, small bug fixes
   - I: Number of Indicators already built into the platform
+
+License
+=======
+
+GNU General Public License v3 or later (GPLv3+). See `LICENSE <LICENSE>`_.
+
+This project is a fork of `mementum/backtrader <https://github.com/mementum/backtrader>`_.

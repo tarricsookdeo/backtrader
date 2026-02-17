@@ -1,13 +1,16 @@
 # Backtrader Modernization Opportunities
 
 ## Overview
-Backtrader is a mature Python backtesting library originally designed for Python 2/3 compatibility. This document outlines modernization opportunities using Python 3.8+ features.
+This is a fork of [mementum/backtrader](https://github.com/mementum/backtrader), maintained at [tarricsookdeo/backtrader](https://github.com/tarricsookdeo/backtrader). The original project is no longer actively maintained. This fork targets Python 3.8+ and is installed locally from source (not available on PyPI).
+
+This document outlines modernization opportunities using Python 3.8+ features.
 
 ## Current State
 - **Files**: 171 Python files
 - **Lines of Code**: ~50,000+
-- **Python Compatibility**: Originally 2.7/3.x, now targeting 3.8+
+- **Python Compatibility**: 3.8+ (Python 2 support removed)
 - **Architecture**: Synchronous, event-driven backtesting engine
+- **Installation**: Local only via `pip install -e .` (no PyPI package)
 
 ---
 
