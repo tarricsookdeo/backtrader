@@ -26,6 +26,9 @@ import os
 import os.path
 import sys
 
+import matplotlib
+matplotlib.use('Agg')
+
 # append module root directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
