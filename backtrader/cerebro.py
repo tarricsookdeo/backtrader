@@ -18,22 +18,17 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import datetime
 import collections
+import collections.abc
 import itertools
 import multiprocessing
-
-try:  # For new Python versions
-    collectionsAbc = collections.abc  # collections.Iterable -> collections.abc.Iterable
-except AttributeError:  # For old Python versions
-    collectionsAbc = collections  # Используем collections.Iterable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import backtrader as bt
-from .utils.py3 import (map, range, zip, with_metaclass, string_types,
-                        integer_types)
+
+# Python 3.10+ compatibility - collections.abc is the proper import
+collectionsAbc = collections.abc
 
 from . import linebuffer
 from . import indicator
@@ -57,7 +52,7 @@ class OptReturn(object):
             setattr(self, k, v)
 
 
-class Cerebro(with_metaclass(MetaParams, object)):
+class Cerebro(metaclass=MetaParams):
     '''Params:
 
       - ``preload`` (default: ``True``)

@@ -1,0 +1,84 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install sphinx sphinx-rtd-theme
+
+    - name: Check docstring coverage
+      run: |
+        pip install interrogate
+        interrogate backtrader/ --verbose || true
+      continue-on-error: true
+
+    - name: Generate API docs
+      run: |
+        python -c "
+import backtrader
+import inspect
+
+print('Backtrader Public API')
+print('=' * 50)
+
+# Core classes
+classes = [
+    backtrader.Cerebro,
+    backtrader.Strategy,
+    backtrader.Indicator,
+    backtrader.Analyzer,
+    backtrader.Observer,
+    backtrader.Broker,
+]
+
+for cls in classes:
+    print(f'\\n{cls.__name__}')
+    print('-' * len(cls.__name__))
+    try:
+        doc = cls.__doc__
+        if doc:
+            print(doc[:200] + '...' if len(doc) > 200 else doc)
+        else:
+            print('No documentation')
+    except:
+        pass
+
+print('\\n\\nIndicators')
+print('=' * 50)
+for name in dir(backtrader.indicators)[:20]:  # First 20
+    if not name.startswith('_'):
+        print(f'  - {name}')
+"
+
+    - name: Check README
+      run: |
+        if [ ! -f README.md ] && [ ! -f README.rst ]; then
+          echo "❌ No README file found!"
+          exit 1
+        fi
+        echo "✅ README file exists"
+
+    - name: Check changelog
+      run: |
+        if [ -f changelog.txt ] || [ -f CHANGELOG.md ]; then
+          echo "✅ Changelog exists"
+        else
+          echo "⚠️ No changelog found"
+        fi
