@@ -37,6 +37,7 @@ from .metabase import MetaParams
 from . import observers
 from .writer import WriterFile
 from .utils import OrderedDict, tzparse, num2date, date2num
+from .utils.py3 import integer_types, string_types
 from .strategy import Strategy, SignalStrategy
 from .tradingcal import (TradingCalendarBase, TradingCalendar,
                          PandasMarketCalendar)
@@ -667,7 +668,7 @@ class Cerebro(metaclass=MetaParams):
 
         The signature of the callback must support the following:
 
-          - callback(msg, \*args, \*\*kwargs)
+          - callback(msg, *args, **kwargs)
 
         The actual ``msg``, ``*args`` and ``**kwargs`` received are
         implementation defined (depend entirely on the *data/broker/store*) but
@@ -709,7 +710,7 @@ class Cerebro(metaclass=MetaParams):
 
         The signature of the callback must support the following:
 
-          - callback(data, status, \*args, \*\*kwargs)
+          - callback(data, status, *args, **kwargs)
 
         The actual ``*args`` and ``**kwargs`` received are implementation
         defined (depend entirely on the *data/broker/store*) but in general one
@@ -767,42 +768,6 @@ class Cerebro(metaclass=MetaParams):
             self._dolive = True
 
         return data
-
-    def chaindata(self, *args, **kwargs):
-        '''
-        Chains several data feeds into one
-
-        If ``name`` is passed as named argument and is not None it will be put
-        into ``data._name`` which is meant for decoration/plotting purposes.
-
-        If ``None``, then the name of the 1st data will be used
-        '''
-        dname = kwargs.pop('name', None)
-        if dname is None:
-            dname = args[0]._dataname
-        d = bt.feeds.Chainer(dataname=dname, *args)
-        self.adddata(d, name=dname)
-
-        return d
-
-    def rolloverdata(self, *args, **kwargs):
-        '''Chains several data feeds into one
-
-        If ``name`` is passed as named argument and is not None it will be put
-        into ``data._name`` which is meant for decoration/plotting purposes.
-
-        If ``None``, then the name of the 1st data will be used
-
-        Any other kwargs will be passed to the RollOver class
-
-        '''
-        dname = kwargs.pop('name', None)
-        if dname is None:
-            dname = args[0]._dataname
-        d = bt.feeds.RollOver(dataname=dname, *args, **kwargs)
-        self.adddata(d, name=dname)
-
-        return d
 
     def replaydata(self, dataname, name=None, **kwargs):
         '''

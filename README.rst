@@ -48,11 +48,11 @@ You can also run commands without activating the shell by using ``pipenv run``::
 Usage
 =====
 
-Here is a snippet of a Simple Moving Average CrossOver. It can be done in
-several different ways. Use the docs (and examples) Luke!
+Here is a snippet of a Simple Moving Average CrossOver using a pandas
+DataFrame as the data source.
 ::
 
-  from datetime import datetime
+  import pandas as pd
   import backtrader as bt
 
   class SmaCross(bt.SignalStrategy):
@@ -61,12 +61,14 @@ several different ways. Use the docs (and examples) Luke!
           crossover = bt.ind.CrossOver(sma1, sma2)
           self.signal_add(bt.SIGNAL_LONG, crossover)
 
+  # Load your OHLCV data into a pandas DataFrame
+  df = pd.read_csv('your_data.csv', index_col='Date', parse_dates=True)
+
   cerebro = bt.Cerebro()
   cerebro.addstrategy(SmaCross)
 
-  data0 = bt.feeds.YahooFinanceData(dataname='MSFT', fromdate=datetime(2011, 1, 1),
-                                    todate=datetime(2012, 12, 31))
-  cerebro.adddata(data0)
+  data = bt.feeds.PandasData(dataname=df)
+  cerebro.adddata(data)
 
   cerebro.run()
   cerebro.plot()
@@ -83,16 +85,7 @@ Features
 
 Live Trading and backtesting platform written in Python.
 
-  - Live Data Feed and Trading with
-
-    - Interactive Brokers (needs ``IbPy`` and benefits greatly from an
-      installed ``pytz``)
-    - *Visual Chart* (needs a fork of ``comtypes`` until a pull request is
-      integrated in the release and benefits from ``pytz``)
-    - *Oanda* (needs ``oandapy``) (REST API Only - v20 did not support
-      streaming when implemented)
-
-  - Data feeds from csv/files, online sources or from *pandas* and *blaze*
+  - Data feeds from *pandas* DataFrames (OHLCV)
   - Filters for datas, like breaking a daily bar into chunks to simulate
     intraday or working with Renko bricks
   - Multiple data feeds and multiple strategies supported
@@ -119,7 +112,7 @@ Requirements
 ============
 
   - Python >= ``3.8``
-  - No external dependencies for core functionality
+  - ``pandas`` (for data feeds)
   - ``matplotlib`` is optional (for plotting)
 
 Installation
@@ -138,18 +131,6 @@ To include plotting support::
 
   pipenv install matplotlib
 
-For *IB* Data Feeds/Trading:
-
-  - ``IbPy`` doesn't seem to be in PyPi. Do either::
-
-      pipenv install git+https://github.com/blampe/IbPy.git#egg=IbPy
-
-    or (if ``git`` is not available in your system)::
-
-      pipenv install https://github.com/blampe/IbPy/archive/master.zip
-
-For other functionalities like: ``Visual Chart``, ``Oanda``, ``TA-Lib``, check
-the dependencies in the upstream documentation.
 
 Running Tests
 =============

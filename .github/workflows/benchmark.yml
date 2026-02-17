@@ -42,10 +42,10 @@ jobs:
                 elif self.sma[0] < self.data.close[0] and self.rsi[0] > 70:
                     self.sell()
 
-        data = bt.feeds.YahooFinanceData(
-            dataname='AAPL',
-            fromdate=datetime.datetime(2020, 1, 1),
-            todate=datetime.datetime(2023, 12, 31)
+        data = bt.feeds.BacktraderCSVData(
+            dataname='datas/2006-day-001.txt',
+            fromdate=datetime.datetime(2006, 1, 1),
+            todate=datetime.datetime(2006, 12, 31)
         )
 
         print('Running benchmarks...')

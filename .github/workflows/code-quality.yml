@@ -38,41 +38,38 @@ jobs:
     - name: Check for Python 2 remnants
       run: |
         echo "Checking for Python 2 compatibility code that can be removed..."
-        python -c "
-import os
-import re
+        python << 'PY2CHECK'
+        import os
+        import re
 
-issues = []
+        issues = []
 
-for root, dirs, files in os.walk('backtrader'):
-    for file in files:
-        if file.endswith('.py'):
-            filepath = os.path.join(root, file)
-            with open(filepath, 'r') as f:
-                content = f.read()
-                lines = content.split('\n')
-                for i, line in enumerate(lines, 1):
-                    # Check for __future__ imports
-                    if 'from __future__' in line:
-                        issues.append((filepath, i, line.strip(), 'Remove __future__ import'))
-                    # Check for with_metaclass
-                    if 'with_metaclass' in line:
-                        issues.append((filepath, i, line.strip(), 'Replace with native metaclass syntax'))
-                    # Check for object inheritance
-                    if re.search(r'class \w+\(object\)', line):
-                        issues.append((filepath, i, line.strip(), 'Remove object inheritance'))
+        for root, dirs, files in os.walk('backtrader'):
+            for file in files:
+                if file.endswith('.py'):
+                    filepath = os.path.join(root, file)
+                    with open(filepath, 'r') as f:
+                        content = f.read()
+                        lines = content.split('\n')
+                        for i, line in enumerate(lines, 1):
+                            if 'from __future__' in line:
+                                issues.append((filepath, i, line.strip(), 'Remove __future__ import'))
+                            if 'with_metaclass' in line:
+                                issues.append((filepath, i, line.strip(), 'Replace with native metaclass syntax'))
+                            if re.search(r'class \w+\(object\)', line):
+                                issues.append((filepath, i, line.strip(), 'Remove object inheritance'))
 
-if issues:
-    print(f'Found {len(issues)} Python 2 compatibility patterns:')
-    print()
-    for filepath, line, code, suggestion in issues[:30]:
-        print(f'{filepath}:{line}')
-        print(f'  {code}')
-        print(f'  -> {suggestion}')
-        print()
-else:
-    print('No Python 2 compatibility code found!')
-"
+        if issues:
+            print(f'Found {len(issues)} Python 2 compatibility patterns:')
+            print()
+            for filepath, line, code, suggestion in issues[:30]:
+                print(f'{filepath}:{line}')
+                print(f'  {code}')
+                print(f'  -> {suggestion}')
+                print()
+        else:
+            print('No Python 2 compatibility code found!')
+        PY2CHECK
 
     - name: Security check with Bandit
       run: |
@@ -81,35 +78,35 @@ else:
 
     - name: Check import structure
       run: |
-        python -c "
-import ast
-import os
+        python << 'IMPORTCHECK'
+        import ast
+        import os
 
-def check_imports(filepath):
-    with open(filepath, 'r') as f:
-        tree = ast.parse(f.read())
-    
-    issues = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module == '__future__':
-                issues.append(f'{filepath}: Uses __future__ import')
-    return issues
+        def check_imports(filepath):
+            with open(filepath, 'r') as f:
+                tree = ast.parse(f.read())
 
-all_issues = []
-for root, dirs, files in os.walk('backtrader'):
-    for file in files:
-        if file.endswith('.py'):
-            filepath = os.path.join(root, file)
-            try:
-                all_issues.extend(check_imports(filepath))
-            except:
-                pass
+            issues = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    if node.module == '__future__':
+                        issues.append(f'{filepath}: Uses __future__ import')
+            return issues
 
-if all_issues:
-    print(f'Found {len(all_issues)} files with __future__ imports:')
-    for issue in all_issues[:20]:
-        print(f'  {issue}')
-else:
-    print('No __future__ imports found!')
-"
+        all_issues = []
+        for root, dirs, files in os.walk('backtrader'):
+            for file in files:
+                if file.endswith('.py'):
+                    filepath = os.path.join(root, file)
+                    try:
+                        all_issues.extend(check_imports(filepath))
+                    except:
+                        pass
+
+        if all_issues:
+            print(f'Found {len(all_issues)} files with __future__ imports:')
+            for issue in all_issues[:20]:
+                print(f'  {issue}')
+        else:
+            print('No __future__ imports found!')
+        IMPORTCHECK
