@@ -24,58 +24,53 @@ jobs:
 
     - name: Run performance benchmarks
       run: |
-        python -c "
-import time
-import backtrader as bt
-import datetime
-import sys
+        python << 'BENCH'
+        import time
+        import backtrader as bt
+        import datetime
 
-class BenchmarkStrategy(bt.Strategy):
-    params = (('sma_period', 15),)
-    
-    def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.params.sma_period)
-        self.rsi = bt.indicators.RSI(self.data.close)
-        
-    def next(self):
-        if self.sma[0] > self.data.close[0] and self.rsi[0] < 30:
-            self.buy()
-        elif self.sma[0] < self.data.close[0] and self.rsi[0] > 70:
-            self.sell()
+        class BenchmarkStrategy(bt.Strategy):
+            params = (('sma_period', 15),)
 
-# Create sample data
-data = bt.feeds.YahooFinanceData(
-    dataname='AAPL',
-    fromdate=datetime.datetime(2020, 1, 1),
-    todate=datetime.datetime(2023, 12, 31)
-)
+            def __init__(self):
+                self.sma = bt.indicators.SMA(self.data.close, period=self.params.sma_period)
+                self.rsi = bt.indicators.RSI(self.data.close)
 
-# Benchmark 1: Single backtest
-print('Running benchmarks...')
-start = time.time()
+            def next(self):
+                if self.sma[0] > self.data.close[0] and self.rsi[0] < 30:
+                    self.buy()
+                elif self.sma[0] < self.data.close[0] and self.rsi[0] > 70:
+                    self.sell()
 
-cerebro = bt.Cerebro()
-cerebro.addstrategy(BenchmarkStrategy)
-cerebro.adddata(data)
-cerebro.broker.setcash(100000.0)
+        data = bt.feeds.YahooFinanceData(
+            dataname='AAPL',
+            fromdate=datetime.datetime(2020, 1, 1),
+            todate=datetime.datetime(2023, 12, 31)
+        )
 
-cerebro.run()
+        print('Running benchmarks...')
+        start = time.time()
 
-elapsed = time.time() - start
-print(f'Single backtest: {elapsed:.2f}s')
+        cerebro = bt.Cerebro()
+        cerebro.addstrategy(BenchmarkStrategy)
+        cerebro.adddata(data)
+        cerebro.broker.setcash(100000.0)
+        cerebro.run()
 
-# Benchmark 2: Optimization
-print('\\nRunning optimization benchmark...')
-start = time.time()
+        elapsed = time.time() - start
+        print(f'Single backtest: {elapsed:.2f}s')
 
-cerebro = bt.Cerebro()
-cerebro.optstrategy(BenchmarkStrategy, sma_period=range(10, 30, 5))
-cerebro.adddata(data)
-cerebro.broker.setcash(100000.0)
-cerebro.run(maxcpus=1)  # Single CPU for consistent results
+        print('\nRunning optimization benchmark...')
+        start = time.time()
 
-elapsed = time.time() - start
-print(f'Optimization (4 runs): {elapsed:.2f}s')
+        cerebro = bt.Cerebro()
+        cerebro.optstrategy(BenchmarkStrategy, sma_period=range(10, 30, 5))
+        cerebro.adddata(data)
+        cerebro.broker.setcash(100000.0)
+        cerebro.run(maxcpus=1)
 
-print(f'\\n✅ Benchmarks complete!')
-"
+        elapsed = time.time() - start
+        print(f'Optimization (4 runs): {elapsed:.2f}s')
+
+        print('\nBenchmarks complete!')
+        BENCH
