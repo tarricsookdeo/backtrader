@@ -112,7 +112,7 @@ def runtest(datas,
                     cerebro.optstrategy(strategy, **kwargs)
 
                 cerebro.run()
-                if plot:
+                if plot and os.environ.get('DISPLAY'):
                     cerebro.plot()
 
                 cerebros.append(cerebro)
