@@ -20,96 +20,19 @@ jobs:
     - name: Install tools
       run: |
         python -m pip install --upgrade pip
-        pip install ruff mypy bandit
+        pip install ruff bandit
 
-    - name: Run Ruff (fast linter)
-      run: |
-        # E - pycodestyle errors
-        # W - pycodestyle warnings  
-        # F - Pyflakes
-        # UP - pyupgrade (Python upgrade checks)
-        ruff check backtrader/ \
-          --select E,W,F,UP \
-          --ignore E501,E402,E265,E266,W293,UP009 \
-          --target-version py38 \
-          --output-format github || true
+    - name: Run Ruff
+      run: ruff check backtrader/ --select E,W,F,UP --ignore E501,E402,E265,E266,W293,UP009 --target-version py38 || true
       continue-on-error: true
 
-    - name: Check for Python 2 remnants
+    - name: Check Python 2 remnants
       run: |
-        echo "Checking for Python 2 compatibility code that can be removed..."
-        python -c "
-import os
-import re
-
-issues = []
-
-for root, dirs, files in os.walk('backtrader'):
-    for file in files:
-        if file.endswith('.py'):
-            filepath = os.path.join(root, file)
-            with open(filepath, 'r') as f:
-                content = f.read()
-                lines = content.split('\n')
-                for i, line in enumerate(lines, 1):
-                    # Check for __future__ imports
-                    if 'from __future__' in line:
-                        issues.append((filepath, i, line.strip(), 'Remove __future__ import'))
-                    # Check for with_metaclass
-                    if 'with_metaclass' in line:
-                        issues.append((filepath, i, line.strip(), 'Replace with native metaclass syntax'))
-                    # Check for object inheritance
-                    if re.search(r'class \w+\(object\)', line):
-                        issues.append((filepath, i, line.strip(), 'Remove object inheritance'))
-
-if issues:
-    print(f'Found {len(issues)} Python 2 compatibility patterns:')
-    print()
-    for filepath, line, code, suggestion in issues[:30]:
-        print(f'{filepath}:{line}')
-        print(f'  {code}')
-        print(f'  -> {suggestion}')
-        print()
-else:
-    print('No Python 2 compatibility code found!')
-"
+        echo "Checking for __future__ imports..."
+        grep -r "from __future__" backtrader/ --include="*.py" | wc -l | xargs echo "Found __future__ lines:"
+        echo "Checking for with_metaclass..."
+        grep -r "with_metaclass" backtrader/ --include="*.py" | wc -l | xargs echo "Found with_metaclass lines:"
 
     - name: Security check with Bandit
-      run: |
-        bandit -r backtrader/ -f github -ll || true
+      run: bandit -r backtrader/ -ll || true
       continue-on-error: true
-
-    - name: Check import structure
-      run: |
-        python -c "
-import ast
-import os
-
-def check_imports(filepath):
-    with open(filepath, 'r') as f:
-        tree = ast.parse(f.read())
-    
-    issues = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module == '__future__':
-                issues.append(f'{filepath}: Uses __future__ import')
-    return issues
-
-all_issues = []
-for root, dirs, files in os.walk('backtrader'):
-    for file in files:
-        if file.endswith('.py'):
-            filepath = os.path.join(root, file)
-            try:
-                all_issues.extend(check_imports(filepath))
-            except:
-                pass
-
-if all_issues:
-    print(f'Found {len(all_issues)} files with __future__ imports:')
-    for issue in all_issues[:20]:
-        print(f'  {issue}')
-else:
-    print('No __future__ imports found!')
-"

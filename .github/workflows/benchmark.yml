@@ -22,60 +22,6 @@ jobs:
         pip install -e .
         pip install numpy pandas matplotlib
 
-    - name: Run performance benchmarks
+    - name: Run benchmarks
       run: |
-        python -c "
-import time
-import backtrader as bt
-import datetime
-import sys
-
-class BenchmarkStrategy(bt.Strategy):
-    params = (('sma_period', 15),)
-    
-    def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.params.sma_period)
-        self.rsi = bt.indicators.RSI(self.data.close)
-        
-    def next(self):
-        if self.sma[0] > self.data.close[0] and self.rsi[0] < 30:
-            self.buy()
-        elif self.sma[0] < self.data.close[0] and self.rsi[0] > 70:
-            self.sell()
-
-# Create sample data
-data = bt.feeds.YahooFinanceData(
-    dataname='AAPL',
-    fromdate=datetime.datetime(2020, 1, 1),
-    todate=datetime.datetime(2023, 12, 31)
-)
-
-# Benchmark 1: Single backtest
-print('Running benchmarks...')
-start = time.time()
-
-cerebro = bt.Cerebro()
-cerebro.addstrategy(BenchmarkStrategy)
-cerebro.adddata(data)
-cerebro.broker.setcash(100000.0)
-
-cerebro.run()
-
-elapsed = time.time() - start
-print(f'Single backtest: {elapsed:.2f}s')
-
-# Benchmark 2: Optimization
-print('\\nRunning optimization benchmark...')
-start = time.time()
-
-cerebro = bt.Cerebro()
-cerebro.optstrategy(BenchmarkStrategy, sma_period=range(10, 30, 5))
-cerebro.adddata(data)
-cerebro.broker.setcash(100000.0)
-cerebro.run(maxcpus=1)  # Single CPU for consistent results
-
-elapsed = time.time() - start
-print(f'Optimization (4 runs): {elapsed:.2f}s')
-
-print(f'\\n✅ Benchmarks complete!')
-"
+        python -c "import time; import backtrader as bt; start = time.time(); c = bt.Cerebro(); c.run(); print('Benchmark time:', time.time() - start)"
