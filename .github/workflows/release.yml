@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-publish:
+  create-release:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -16,11 +16,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-
-    - name: Install build dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
 
     - name: Verify version matches tag
       if: startsWith(github.ref, 'refs/tags/v')
@@ -35,20 +30,12 @@ jobs:
         fi
         echo "✅ Versions match!"
 
-    - name: Build package
+    - name: Test installation
       run: |
-        python -m build
+        pip install -e .
+        python -c "import backtrader; print(f'✅ backtrader {backtrader.__version__} is working')"
 
-    - name: Check package
-      run: |
-        twine check dist/*
-
-    - name: Test built package
-      run: |
-        pip install dist/*.whl
-        python -c "import backtrader; print(f'Successfully installed backtrader {backtrader.__version__}')"
-
-    - name: Create Release
+    - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: actions/create-release@v1
       env:
@@ -58,11 +45,11 @@ jobs:
         release_name: Release ${{ github.ref }}
         draft: false
         prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        body: |
+          ## Changes in this release
+          See [CHANGELOG](https://github.com/tarricsookdeo/backtrader/blob/master/changelog.txt) for details.
 
-    - name: Upload to PyPI
-      if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta')
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        twine upload dist/*
+          ### Installation
+          ```bash
+          pip install git+https://github.com/tarricsookdeo/backtrader.git@${{ github.ref_name }}
+          ```
