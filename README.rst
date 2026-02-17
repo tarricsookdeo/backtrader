@@ -171,3 +171,112 @@ License
 GNU General Public License v3 or later (GPLv3+). See `LICENSE <LICENSE>`_.
 
 This project is a fork of `mementum/backtrader <https://github.com/mementum/backtrader>`_.
+
+Planned: Futures Trading + Prop Firm Rules
+==========================================
+
+The following components are planned to extend backtrader for futures trading
+with prop firm rule enforcement. Each component is independent and composable.
+
+Component 1: Futures Commission Info
+-------------------------------------
+
+**New file:** ``backtrader/commissions/futures.py``
+
+- ``FuturesCommInfo`` — subclass of ``CommInfo_Futures_Fixed`` with ``tick_size``
+  and ``tick_value`` params
+- Auto-derives ``mult = tick_value / tick_size`` in ``__init__``
+  (validates ``tick_size > 0``)
+- Pre-configured instrument classes with correct tick/margin/commission defaults:
+
+  - ``ESFuturesCommInfo`` — E-mini S&P 500
+  - ``NQFuturesCommInfo`` — E-mini Nasdaq 100
+  - ``CLFuturesCommInfo`` — Crude Oil
+  - ``MESFuturesCommInfo`` — Micro E-mini S&P 500
+  - ``MNQFuturesCommInfo`` — Micro E-mini Nasdaq 100
+
+**Modify:** ``backtrader/commissions/__init__.py`` — add imports for the new classes
+
+Component 2: Prop Firm Drawdown Analyzer
+-----------------------------------------
+
+**New file:** ``backtrader/analyzers/propfirm_drawdown.py``
+
+- ``PropFirmDrawDown(bt.Analyzer)`` with params:
+
+  - ``max_drawdown`` (dollars) — threshold for breach detection
+  - ``trailing_mode`` — ``'intraday'`` (HWM updates every bar) or ``'eod'``
+    (HWM updates at session end only)
+  - ``trail_stop_threshold`` (dollars) — profit level at which trailing stops
+    and HWM freezes (common prop firm rule)
+  - ``starting_balance`` — auto-detected if not set
+
+- EOD detection: compare bar time to ``data.p.sessionend`` in ``next()``
+  (no timer dependency)
+- Tracks: HWM, current drawdown, max drawdown, breach events
+  (datetime + value + DD amount), whether trailing is frozen
+- Breaches are **tracked only** — trading continues
+- Accessible from strategy via
+  ``self.analyzers.propfirmdrawdown.get_current_drawdown()``
+  and ``.is_breached()``
+
+**Modify:** ``backtrader/analyzers/__init__.py`` — add
+``from .propfirm_drawdown import *``
+
+Component 3: EOD Position Closer (Strategy Mixin)
+---------------------------------------------------
+
+**New file:** ``backtrader/strategies/position_closer.py``
+
+- ``EODPositionCloserMixin`` — strategy mixin using the ``add_timer()`` system
+- Params: ``close_time`` (default 15:55), ``cancel_open_orders`` (default True)
+- Registers a timer in ``start()``, handles it in ``notify_timer()``
+- Cancels open orders then calls ``self.close(data=d)`` for each data with
+  a position
+- Usage: ``class MyStrat(EODPositionCloserMixin, bt.Strategy):``
+- Chains ``super()`` calls so the user's own ``notify_timer`` still works
+
+Component 4: Max Contracts Sizer
+----------------------------------
+
+**New file:** ``backtrader/sizers/max_contracts.py``
+
+- ``MaxContractsSizer(bt.Sizer)`` with params:
+
+  - ``max_contracts`` — max position size per instrument
+  - ``stake`` — default order size (used if no base_sizer)
+
+- Checks current position, caps order size so total won't exceed limit
+- Handles both buy (long cap) and sell (short cap) directions
+
+**Modify:** ``backtrader/sizers/__init__.py`` — add
+``from .max_contracts import *``
+
+Component 5: Convenience Setup Helper
+---------------------------------------
+
+**New file:** ``backtrader/propfirm.py``
+
+- ``setup_prop_firm(cerebro, ...)`` function that wires up all components
+  in one call
+- Params: instrument, starting_balance, max_drawdown, trailing_mode,
+  trail_stop_threshold, max_contracts
+- Sets commission info, cash, adds analyzer, adds sizer
+- Note: EOD closing requires the mixin in the strategy class
+  (documented in docstring)
+
+Files Summary
+--------------
+
+========  =============================================
+Action    File
+========  =============================================
+Create    ``backtrader/commissions/futures.py``
+Create    ``backtrader/analyzers/propfirm_drawdown.py``
+Create    ``backtrader/strategies/position_closer.py``
+Create    ``backtrader/sizers/max_contracts.py``
+Create    ``backtrader/propfirm.py``
+Modify    ``backtrader/commissions/__init__.py``
+Modify    ``backtrader/analyzers/__init__.py``
+Modify    ``backtrader/sizers/__init__.py``
+========  =============================================
