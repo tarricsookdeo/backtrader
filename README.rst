@@ -303,12 +303,29 @@ Param                     Default                   Description
           # ... your logic (positions auto-close at close_time) ...
           pass
 
-**Notes:**
+**Important — MetaParams compatibility:**
+
+Backtrader uses a custom metaclass (``MetaParams``) that merges ``params``
+tuples from all base classes. A plain ``object`` mixin cannot define ``params``
+as a tuple — the metaclass expects a special ``_derive``-able params object
+on base classes, and a raw tuple will cause an ``AttributeError``.
+
+Because of this, ``EODPositionCloserMixin`` does **not** define ``params``
+itself. Instead:
+
+1. Define ``close_time`` and ``cancel_open_orders`` as params on **your
+   strategy class** (shown in the usage example above).
+2. If you omit them, the mixin falls back to built-in defaults
+   (``close_time=15:55``, ``cancel_open_orders=True``) via ``getattr``.
+
+**Other notes:**
 
 - The mixin must come **before** ``bt.Strategy`` in the class definition
-- Params are defined on your strategy (not the mixin) due to backtrader's
-  metaclass system. Defaults apply if params are omitted.
-- Chains ``super()`` calls so your own ``notify_timer`` still works
+  so that Python's MRO resolves ``__init__``, ``start``, and
+  ``notify_timer`` through the mixin first.
+- Always call ``super().__init__()`` in your strategy's ``__init__`` so the
+  mixin can register its timer.
+- Chains ``super()`` calls so your own ``notify_timer`` still works.
 
 Component 4: Max Contracts Sizer [DONE]
 -----------------------------------------
