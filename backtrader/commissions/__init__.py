@@ -62,3 +62,13 @@ class CommInfo_Stocks_Fixed(CommInfo_Stocks):
     params = (
         ('commtype', CommInfoBase.COMM_FIXED),
     )
+
+
+from .futures import (  # noqa: E402
+    FuturesCommInfo,
+    ESFuturesCommInfo,
+    NQFuturesCommInfo,
+    CLFuturesCommInfo,
+    MESFuturesCommInfo,
+    MNQFuturesCommInfo,
+)

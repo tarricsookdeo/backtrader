@@ -178,24 +178,67 @@ Planned: Futures Trading + Prop Firm Rules
 The following components are planned to extend backtrader for futures trading
 with prop firm rule enforcement. Each component is independent and composable.
 
-Component 1: Futures Commission Info
--------------------------------------
+Component 1: Futures Commission Info [DONE]
+---------------------------------------------
 
-**New file:** ``backtrader/commissions/futures.py``
+Configures futures contract math so P&L, margin, and commissions are
+calculated correctly from tick size and tick value.
 
-- ``FuturesCommInfo`` — subclass of ``CommInfo_Futures_Fixed`` with ``tick_size``
-  and ``tick_value`` params
-- Auto-derives ``mult = tick_value / tick_size`` in ``__init__``
-  (validates ``tick_size > 0``)
-- Pre-configured instrument classes with correct tick/margin/commission defaults:
+**Params:**
 
-  - ``ESFuturesCommInfo`` — E-mini S&P 500
-  - ``NQFuturesCommInfo`` — E-mini Nasdaq 100
-  - ``CLFuturesCommInfo`` — Crude Oil
-  - ``MESFuturesCommInfo`` — Micro E-mini S&P 500
-  - ``MNQFuturesCommInfo`` — Micro E-mini Nasdaq 100
+==============  ===========  =============================================
+Param           Default      Description
+==============  ===========  =============================================
+``tick_size``   ``0.25``     Minimum price increment (e.g. 0.25 for ES)
+``tick_value``  ``12.50``    Dollar value per tick per contract
+``margin``      ``None``     Margin required per contract in dollars
+``commission``  ``0.0``      Fixed commission per contract per side
+==============  ===========  =============================================
 
-**Modify:** ``backtrader/commissions/__init__.py`` — add imports for the new classes
+``mult`` is auto-derived as ``tick_value / tick_size``. Do not set it manually.
+
+**Pre-configured instruments:**
+
+=========================  ==========  ==========  ======  ========  ==========
+Class                      tick_size   tick_value   mult    margin    commission
+=========================  ==========  ==========  ======  ========  ==========
+``ESFuturesCommInfo``      0.25        $12.50      50      $15,000   $2.25
+``NQFuturesCommInfo``      0.25        $5.00       20      $20,000   $2.25
+``CLFuturesCommInfo``      0.01        $10.00      1000    $5,000    $2.25
+``MESFuturesCommInfo``     0.25        $1.25       5       $1,500    $0.50
+``MNQFuturesCommInfo``     0.25        $0.50       2       $2,000    $0.50
+=========================  ==========  ==========  ======  ========  ==========
+
+**Usage — pre-configured instrument:**
+::
+
+  from backtrader.commissions.futures import ESFuturesCommInfo
+
+  cerebro = bt.Cerebro()
+  cerebro.broker.addcommissioninfo(ESFuturesCommInfo(), name='ES')
+
+**Usage — custom instrument:**
+::
+
+  from backtrader.commissions.futures import FuturesCommInfo
+
+  cerebro.broker.addcommissioninfo(
+      FuturesCommInfo(
+          tick_size=0.25,
+          tick_value=12.50,
+          margin=15000.0,
+          commission=2.25,
+      ),
+      name='ES',
+  )
+
+**Overriding preset defaults** (e.g. different margin for your broker):
+::
+
+  cerebro.broker.addcommissioninfo(
+      ESFuturesCommInfo(margin=12000.0, commission=1.50),
+      name='ES',
+  )
 
 Component 2: Prop Firm Drawdown Analyzer
 -----------------------------------------
