@@ -266,18 +266,49 @@ Component 2: Prop Firm Drawdown Analyzer
 **Modify:** ``backtrader/analyzers/__init__.py`` — add
 ``from .propfirm_drawdown import *``
 
-Component 3: EOD Position Closer (Strategy Mixin)
----------------------------------------------------
+Component 3: EOD Position Closer (Strategy Mixin) [DONE]
+----------------------------------------------------------
 
-**New file:** ``backtrader/strategies/position_closer.py``
+Automatically closes all positions at a configurable time each session.
+Uses the backtrader timer system. Cancels open orders then flattens every
+position via market order.
 
-- ``EODPositionCloserMixin`` — strategy mixin using the ``add_timer()`` system
-- Params: ``close_time`` (default 15:55), ``cancel_open_orders`` (default True)
-- Registers a timer in ``start()``, handles it in ``notify_timer()``
-- Cancels open orders then calls ``self.close(data=d)`` for each data with
-  a position
-- Usage: ``class MyStrat(EODPositionCloserMixin, bt.Strategy):``
-- Chains ``super()`` calls so the user's own ``notify_timer`` still works
+**Params** (define on your strategy class):
+
+========================  ========================  ====================================
+Param                     Default                   Description
+========================  ========================  ====================================
+``close_time``            ``datetime.time(15, 55)``  Time to close all positions
+``cancel_open_orders``    ``True``                   Cancel pending orders before closing
+========================  ========================  ====================================
+
+**Usage:**
+::
+
+  import datetime
+  from backtrader.strategies.position_closer import EODPositionCloserMixin
+
+  class MyStrategy(EODPositionCloserMixin, bt.Strategy):
+      params = (
+          ('close_time', datetime.time(15, 55)),
+          ('cancel_open_orders', True),
+          # ... your strategy params ...
+      )
+
+      def __init__(self):
+          super(MyStrategy, self).__init__()
+          # ... your indicators ...
+
+      def next(self):
+          # ... your logic (positions auto-close at close_time) ...
+          pass
+
+**Notes:**
+
+- The mixin must come **before** ``bt.Strategy`` in the class definition
+- Params are defined on your strategy (not the mixin) due to backtrader's
+  metaclass system. Defaults apply if params are omitted.
+- Chains ``super()`` calls so your own ``notify_timer`` still works
 
 Component 4: Max Contracts Sizer [DONE]
 -----------------------------------------
