@@ -240,31 +240,73 @@ Class                      tick_size   tick_value   mult    margin    commission
       name='ES',
   )
 
-Component 2: Prop Firm Drawdown Analyzer
------------------------------------------
+Component 2: Prop Firm Drawdown Analyzer [DONE]
+-------------------------------------------------
 
-**New file:** ``backtrader/analyzers/propfirm_drawdown.py``
+Tracks trailing drawdown against a configurable limit. Records breach events
+but **never stops trading** — purely for analysis and compliance tracking.
 
-- ``PropFirmDrawDown(bt.Analyzer)`` with params:
+**Params:**
 
-  - ``max_drawdown`` (dollars) — threshold for breach detection
-  - ``trailing_mode`` — ``'intraday'`` (HWM updates every bar) or ``'eod'``
-    (HWM updates at session end only)
-  - ``trail_stop_threshold`` (dollars) — profit level at which trailing stops
-    and HWM freezes (common prop firm rule)
-  - ``starting_balance`` — auto-detected if not set
+==========================  ===============  =============================================
+Param                       Default          Description
+==========================  ===============  =============================================
+``max_drawdown``            ``3000.0``       Dollar drawdown limit before breach is logged
+``trailing_mode``           ``'intraday'``   ``'intraday'`` = HWM updates every bar;
+                                             ``'eod'`` = HWM updates at session end only
+``trail_stop_threshold``    ``None``         Dollar profit at which trailing stops (HWM
+                                             freezes at ``starting_balance + threshold``)
+``starting_balance``        ``None``         Auto-detected from first bar if not set
+``fund``                    ``None``         Auto-detect fundmode from broker
+==========================  ===============  =============================================
 
-- EOD detection: compare bar time to ``data.p.sessionend`` in ``next()``
-  (no timer dependency)
-- Tracks: HWM, current drawdown, max drawdown, breach events
-  (datetime + value + DD amount), whether trailing is frozen
-- Breaches are **tracked only** — trading continues
-- Accessible from strategy via
-  ``self.analyzers.propfirmdrawdown.get_current_drawdown()``
-  and ``.is_breached()``
+**How trailing works:**
 
-**Modify:** ``backtrader/analyzers/__init__.py`` — add
-``from .propfirm_drawdown import *``
+- The analyzer tracks a high-water mark (HWM) — the highest portfolio value
+- Drawdown is measured as ``HWM - current_value``
+- In ``intraday`` mode, HWM updates on every bar as value increases
+- In ``eod`` mode, HWM only updates when the date changes (session end)
+- When ``trail_stop_threshold`` is set and the account reaches
+  ``starting_balance + trail_stop_threshold``, the HWM **freezes at the
+  threshold level** (not the actual peak). Drawdown becomes static from
+  that point forward.
+
+**Example:** Starting balance $50k, trail_stop_threshold $3k, max_drawdown
+$2.5k. Account goes to $54k then pulls back to $53k. HWM freezes at $53k
+(the threshold). Loss limit is now $53k - $2.5k = $50.5k permanently.
+
+**Analysis output:**
+
+- ``hwm`` — current high-water mark
+- ``current_value`` / ``current_drawdown`` — latest values
+- ``max_drawdown`` — largest drawdown seen (dollars)
+- ``breached`` — True if limit was exceeded
+- ``breach_count`` / ``breaches`` — breach event details (datetime, value,
+  drawdown, hwm)
+- ``trailing_frozen`` / ``frozen_hwm`` — trail freeze state
+
+**Usage:**
+::
+
+  from backtrader.analyzers.propfirm_drawdown import PropFirmDrawDown
+
+  cerebro.addanalyzer(
+      PropFirmDrawDown,
+      max_drawdown=2500.0,
+      trailing_mode='eod',
+      trail_stop_threshold=3000.0,
+      starting_balance=50000.0,
+  )
+
+  results = cerebro.run()
+  strat = results[0]
+  dd = strat.analyzers.propfirmdrawdown.get_analysis()
+  print('Max DD: ${}'.format(dd.max_drawdown))
+  print('Breached: {}'.format(dd.breached))
+
+  # Convenience methods (also usable during the run from strategy):
+  strat.analyzers.propfirmdrawdown.is_breached()
+  strat.analyzers.propfirmdrawdown.get_current_drawdown()
 
 Component 3: EOD Position Closer (Strategy Mixin) [DONE]
 ----------------------------------------------------------
