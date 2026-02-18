@@ -26,3 +26,4 @@ from __future__ import (absolute_import, division, print_function,
 
 from .fixedsize import *
 from .percents_sizer import *
+from .max_contracts import *

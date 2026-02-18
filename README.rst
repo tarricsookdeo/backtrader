@@ -279,21 +279,33 @@ Component 3: EOD Position Closer (Strategy Mixin)
 - Usage: ``class MyStrat(EODPositionCloserMixin, bt.Strategy):``
 - Chains ``super()`` calls so the user's own ``notify_timer`` still works
 
-Component 4: Max Contracts Sizer
-----------------------------------
+Component 4: Max Contracts Sizer [DONE]
+-----------------------------------------
 
-**New file:** ``backtrader/sizers/max_contracts.py``
+Enforces a maximum open position size per instrument. Caps order size so the
+total position (existing + new) never exceeds the limit. Works for both long
+and short directions independently.
 
-- ``MaxContractsSizer(bt.Sizer)`` with params:
+**Params:**
 
-  - ``max_contracts`` — max position size per instrument
-  - ``stake`` — default order size (used if no base_sizer)
+==================  ===========  =============================================
+Param               Default      Description
+==================  ===========  =============================================
+``max_contracts``   ``10``       Max contracts held at once (long or short)
+``stake``           ``1``        Contracts to request per order
+==================  ===========  =============================================
 
-- Checks current position, caps order size so total won't exceed limit
-- Handles both buy (long cap) and sell (short cap) directions
+**Usage:**
+::
 
-**Modify:** ``backtrader/sizers/__init__.py`` — add
-``from .max_contracts import *``
+  cerebro.addsizer(MaxContractsSizer, max_contracts=3, stake=1)
+
+**How it works:**
+
+- Buying with position at +2 and max_contracts=3: sizer returns 1 (room for 1)
+- Buying with position at +3 and max_contracts=3: sizer returns 0 (at limit)
+- Selling with position at +3: sizer returns 1 (moving toward flat, always allowed)
+- If ``stake`` exceeds remaining room, size is reduced to fit
 
 Component 5: Convenience Setup Helper
 ---------------------------------------
