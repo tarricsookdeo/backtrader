@@ -410,6 +410,167 @@ Component 5: Convenience Setup Helper
 - Note: EOD closing requires the mixin in the strategy class
   (documented in docstring)
 
+Component 6: Risk Per Trade Sizer [DONE]
+-----------------------------------------
+
+**File:** ``backtrader/sizers/risk_per_trade.py``
+
+Sizes positions based on a fixed dollar risk amount and a stop distance
+expressed in ticks. Computes::
+
+    size = floor(risk_per_trade / (stop_ticks × tick_value))
+
+When used with ``FuturesCommInfo``, ``tick_value`` is auto-detected from
+the commission info. For other commission types, set ``tick_value`` explicitly.
+
+Params:
+
+=================  =======  ==============================================
+Param              Default  Description
+=================  =======  ==============================================
+``risk_per_trade`` 100.0    Max dollar loss if the stop is hit
+``stop_ticks``     4        Ticks between entry price and stop loss
+``tick_value``     None     Dollar value per tick (auto-detected or set)
+=================  =======  ==============================================
+
+Usage::
+
+    from backtrader.sizers.risk_per_trade import RiskPerTradeSizer
+    from backtrader.commissions.futures import ESFuturesCommInfo
+
+    cerebro.broker.addcommissioninfo(ESFuturesCommInfo())
+    # tick_value=12.50 is auto-detected from ESFuturesCommInfo
+    cerebro.addsizer(RiskPerTradeSizer, risk_per_trade=500.0, stop_ticks=4)
+    # size = floor(500 / (4 * 12.50)) = 10 contracts
+
+    # Or with an explicit tick_value for non-futures instruments:
+    cerebro.addsizer(RiskPerTradeSizer,
+                     risk_per_trade=500.0,
+                     stop_ticks=4,
+                     tick_value=25.0)
+
+Component 7: Daily Loss Limit (Strategy Mixin) [DONE]
+-------------------------------------------------------
+
+**File:** ``backtrader/strategies/daily_loss_limit.py``
+
+Strategy mixin that enforces a maximum intraday dollar loss limit.
+When the portfolio drops ``daily_loss_limit`` dollars from its value at
+the start of the trading day, all open positions are closed and all new
+``buy()`` / ``sell()`` calls are silently blocked (return ``None``) for
+the remainder of that day. Trading resumes automatically at the start of
+the next trading day.
+
+**MetaParams note:** Like ``EODPositionCloserMixin``, this is a plain
+``object`` mixin that does *not* define a ``params`` tuple directly.
+Define your params on the strategy class instead.
+
+Add the mixin **before** ``bt.Strategy`` in the class definition::
+
+    class MyStrategy(DailyLossLimitMixin, bt.Strategy):
+        params = (
+            ('daily_loss_limit', 1000.0),
+            ('cancel_open_on_breach', True),
+        )
+
+Params (define on your strategy class):
+
+============================  =======  ========================================
+Param                         Default  Description
+============================  =======  ========================================
+``daily_loss_limit``          1000.0   Max intraday loss in dollars before halt
+``cancel_open_on_breach``     True     Cancel pending orders when limit is hit
+============================  =======  ========================================
+
+Accessible attributes during the run:
+
+- ``self._trading_blocked`` — ``True`` when the daily loss limit is active
+- ``self._day_start_value`` — portfolio value at the start of the current day
+
+Usage::
+
+    from backtrader.strategies.daily_loss_limit import DailyLossLimitMixin
+
+    class MyStrategy(DailyLossLimitMixin, bt.Strategy):
+        params = (
+            ('daily_loss_limit', 500.0),
+            ('cancel_open_on_breach', True),
+        )
+
+        def next(self):
+            if self._trading_blocked:
+                return  # optional: skip all logic when blocked
+
+            if not self.position:
+                self.buy()
+
+            super(MyStrategy, self).next()
+
+Works alongside ``EODPositionCloserMixin``::
+
+    class MyStrategy(DailyLossLimitMixin, EODPositionCloserMixin, bt.Strategy):
+        params = (
+            ('daily_loss_limit', 500.0),
+            ('cancel_open_on_breach', True),
+            ('close_time', datetime.time(15, 55)),
+            ('cancel_open_orders', True),
+        )
+
+Component 8: Consistency Rule Analyzer [DONE]
+-----------------------------------------------
+
+**File:** ``backtrader/analyzers/consistency.py``
+
+Many prop firms require that no single trading day contributes more than
+a fixed percentage of total net profit (e.g. 40%). This analyzer tracks
+daily closed P&L and flags any violations.
+
+Violations are only checked when the account is net profitable — a losing
+account has no consistency threshold to enforce.
+
+Params:
+
+=================  =======  ==============================================
+Param              Default  Description
+=================  =======  ==============================================
+``max_day_pct``    40.0     Max % of total net profit any single day may represent
+=================  =======  ==============================================
+
+``get_analysis()`` returns:
+
+========================  ===================================================
+Key                       Description
+========================  ===================================================
+``daily_pnl``             Dict mapping each trading date to its net P&L
+``net_pnl``               Total net P&L across all days
+``total_profit``          Sum of profitable days' P&L
+``total_loss``            Sum of losing days' P&L
+``consistent``            ``True`` if no violations found
+``max_day_pct``           The param value (for reference)
+``best_day``              Dict with ``date``, ``pnl``, ``pct`` for top day
+``violations``            List of dicts (``date``, ``pnl``, ``pct``)
+========================  ===================================================
+
+Usage::
+
+    from backtrader.analyzers.consistency import ConsistencyAnalyzer
+
+    cerebro.addanalyzer(ConsistencyAnalyzer, max_day_pct=40.0)
+    results = cerebro.run()
+
+    analysis = results[0].analyzers.consistencyanalyzer.get_analysis()
+    if not analysis.consistent:
+        print('Consistency rule VIOLATED:')
+        for v in analysis.violations:
+            print('  {}: ${:.2f} ({:.1f}% of total profit)'.format(
+                v['date'], v['pnl'], v['pct']))
+    else:
+        print('Account is consistent')
+
+    # Per-day breakdown
+    for date, pnl in sorted(analysis.daily_pnl.items()):
+        print('{}: ${:.2f}'.format(date, pnl))
+
 Files Summary
 --------------
 
@@ -420,6 +581,9 @@ Create    ``backtrader/commissions/futures.py``
 Create    ``backtrader/analyzers/propfirm_drawdown.py``
 Create    ``backtrader/strategies/position_closer.py``
 Create    ``backtrader/sizers/max_contracts.py``
+Create    ``backtrader/sizers/risk_per_trade.py``
+Create    ``backtrader/strategies/daily_loss_limit.py``
+Create    ``backtrader/analyzers/consistency.py``
 Create    ``backtrader/propfirm.py``
 Modify    ``backtrader/commissions/__init__.py``
 Modify    ``backtrader/analyzers/__init__.py``

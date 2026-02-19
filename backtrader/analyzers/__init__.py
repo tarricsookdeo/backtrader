@@ -43,3 +43,4 @@ from .calmar import *
 from .periodstats import *
 
 from .propfirm_drawdown import *
+from .consistency import *
