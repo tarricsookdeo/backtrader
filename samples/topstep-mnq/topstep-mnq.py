@@ -12,6 +12,7 @@ Topstep Rules:
   Daily loss limit:   None
   Consistency rule:   No single day > 50% of total net profit
   Holding timeline:   No positions held past 4:00 PM ET
+  Fees Structure:     $0.74 per contract on entry, no slippage
 
 Strategy:
   - EMA50 crosses above EMA200 → long 3 MNQ contracts
@@ -25,19 +26,21 @@ MNQ specs:
   1 NQ point = 4 ticks = $2.00 per contract
 
 Risk/reward per trade (3 contracts):
-  $150 risk  = $50/contract = 25 NQ points
-  $150 target = $50/contract = 25 NQ points
+  $150 risk   = $50/contract / $2 per point = 25 NQ points
+  $150 target = $50/contract / $2 per point = 25 NQ points
+
+Expected CSV format (Databento-style):
+  ts_event,Open,High,Low,Close,Volume
+  2021-01-26 19:00:00-05:00,13560.25,13567.0,13553.5,13562.25,731
+  ...
+  The ts_event column must be timezone-aware (offset included).
+  All sessions (Asia, London, New York) are included by default.
 
 Usage:
   python topstep-mnq.py --data /path/to/mnq_5min.csv
   python topstep-mnq.py --data /path/to/mnq_5min.csv --printlog
   python topstep-mnq.py --data /path/to/mnq_5min.csv --fromdate 2024-01-01 --todate 2024-06-30
-
-Data format (GenericCSVData):
-  The CSV file should have columns:
-    datetime, open, high, low, close, volume
-  with datetime in the format %Y-%m-%d %H:%M:%S (5-minute bars).
-  Adjust --dtformat and --timeframe/--compression below if your format differs.
+  python topstep-mnq.py --data /path/to/mnq_5min.csv --rth-only   # RTH only (09:30-16:00 ET)
 """
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
@@ -46,6 +49,8 @@ import argparse
 import datetime
 import os
 import sys
+
+import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -57,93 +62,151 @@ from backtrader.strategies.position_closer import EODPositionCloserMixin
 from backtrader.sizers.max_contracts import MaxContractsSizer
 
 
-# MNQ point value: tick_value / tick_size = $0.50 / 0.25 = $2.00 per NQ point per contract
+# MNQ: tick_value=$0.50, tick_size=0.25 → $2.00 per NQ index point per contract
 _MNQ_COMM = MNQFuturesCommInfo()
-MNQ_POINT_VALUE = _MNQ_COMM.p.tick_value / _MNQ_COMM.p.tick_size
+MNQ_POINT_VALUE = _MNQ_COMM.p.tick_value / _MNQ_COMM.p.tick_size  # 2.0
 
+
+# ── Data loading ─────────────────────────────────────────────────────────────
+
+def load_mnq_csv(filepath, fromdate=None, todate=None, rth_only=True):
+    """
+    Load a Databento-style MNQ CSV file and return a backtrader PandasData feed.
+
+    Expected columns: ts_event, Open, High, Low, Close, Volume
+    ts_event format:  2021-01-26 19:00:00-05:00  (timezone-aware, ET offset)
+
+    The timezone offset is stripped after converting to America/New_York so
+    DST transitions (EST=-05:00 / EDT=-04:00) are handled correctly.
+
+    When rth_only=True (default), only bars from 09:30 to 15:55 ET are kept.
+    This matches Regular Trading Hours and ensures the EOD-close timer at
+    16:00 fires after the last RTH bar.
+    """
+    df = pd.read_csv(filepath)
+
+    # Parse tz-aware timestamps → convert to ET → strip tz to get naive ET datetimes
+    # tz_convert handles DST: -05:00 (EST) and -04:00 (EDT) both map correctly
+    df['datetime'] = (
+        pd.to_datetime(df['ts_event'], utc=True)
+        .dt.tz_convert('America/New_York')
+        .dt.tz_localize(None)
+    )
+
+    # Standardize column names to lowercase for backtrader
+    df = df.rename(columns={
+        'Open': 'open',
+        'High': 'high',
+        'Low':  'low',
+        'Close': 'close',
+        'Volume': 'volume',
+    })
+
+    df = df[['datetime', 'open', 'high', 'low', 'close', 'volume']].copy()
+    df = df.set_index('datetime')
+    df = df.sort_index()
+
+    # Optional date range filter
+    if fromdate:
+        df = df[df.index >= pd.Timestamp(fromdate)]
+    if todate:
+        # Include all bars through the end of todate
+        df = df[df.index < pd.Timestamp(todate) + pd.Timedelta(days=1)]
+
+    # Regular Trading Hours filter: keep only 09:30–15:55 ET bars
+    # The last 5-min bar starting at 15:55 covers 15:55–16:00, after which
+    # the EOD close timer fires and flattens any open position.
+    if rth_only:
+        df = df.between_time('09:30', '15:55')
+
+    if df.empty:
+        raise ValueError(
+            'No data found after filtering.\n'
+            'Check --fromdate/--todate and verify the CSV covers that range.\n'
+            'If using --fromdate/--todate, note that dates are inclusive.')
+
+    print('Loaded {:,} bars  |  {} → {}  |  session: {}'.format(
+        len(df),
+        df.index[0].strftime('%Y-%m-%d'),
+        df.index[-1].strftime('%Y-%m-%d'),
+        'RTH only (09:30-16:00 ET)' if rth_only else 'all hours',
+    ))
+
+    return bt.feeds.PandasData(
+        dataname=df,
+        timeframe=bt.TimeFrame.Minutes,
+        compression=5,
+        openinterest=-1,   # CSV has no open-interest column
+    )
+
+
+# ── Strategy ─────────────────────────────────────────────────────────────────
 
 def dollars_to_points(dollars, contracts):
-    """Convert a dollar P&L target to NQ index points."""
+    """Convert a dollar P&L amount to NQ index points (for stop/target calc)."""
     return dollars / (contracts * MNQ_POINT_VALUE)
 
 
 class TopstepMNQStrategy(EODPositionCloserMixin, bt.Strategy):
     """
-    EMA50/EMA200 crossover strategy sized for Topstep MNQ combine rules.
+    EMA50/EMA200 crossover strategy for Topstep MNQ combine rules.
 
-    On a golden cross (EMA50 > EMA200):  open long 3 MNQ with bracket orders.
-    On a death cross (EMA50 < EMA200):   open short 3 MNQ with bracket orders.
+    Golden cross  → long  3 MNQ with bracket orders ($150 stop / $150 target)
+    Death  cross  → short 3 MNQ with bracket orders ($150 stop / $150 target)
 
-    EODPositionCloserMixin closes all positions at 4:00 PM ET.
+    EODPositionCloserMixin flattens everything at 4:00 PM ET each day.
     """
 
     params = (
-        # Indicator periods
-        ('ema_fast', 50),
-        ('ema_slow', 200),
-
-        # Trade sizing and risk
-        ('contracts', 3),         # contracts per trade
-        ('risk_dollars', 150.0),  # max dollar loss per trade
-        ('profit_dollars', 150.0),# dollar profit target per trade
-
-        # EODPositionCloserMixin — close everything by 4:00 PM ET
-        ('close_time', datetime.time(16, 0)),
+        ('ema_fast',       50),
+        ('ema_slow',       200),
+        ('contracts',      3),
+        ('risk_dollars',   150.0),
+        ('profit_dollars', 150.0),
+        # EODPositionCloserMixin params
+        ('close_time',         datetime.time(16, 0)),
         ('cancel_open_orders', True),
-
-        # Output
         ('printlog', False),
     )
 
     def __init__(self):
         super(TopstepMNQStrategy, self).__init__()
-        self.ema_fast = bt.indicators.EMA(
-            self.data.close, period=self.p.ema_fast)
-        self.ema_slow = bt.indicators.EMA(
-            self.data.close, period=self.p.ema_slow)
+        self.ema_fast  = bt.indicators.EMA(self.data.close, period=self.p.ema_fast)
+        self.ema_slow  = bt.indicators.EMA(self.data.close, period=self.p.ema_slow)
         self.crossover = bt.indicators.CrossOver(self.ema_fast, self.ema_slow)
-
-        # Track the main bracket order so we don't double-enter
-        self.main_order = None
+        self.main_order = None   # tracks the main leg of the active bracket
 
     def log(self, txt):
         if self.p.printlog:
-            dt = self.datetime.datetime(0)
-            print('{} | {}'.format(dt.strftime('%Y-%m-%d %H:%M'), txt))
+            print('{} | {}'.format(
+                self.datetime.datetime(0).strftime('%Y-%m-%d %H:%M'), txt))
 
     def next(self):
-        # Already in a position or waiting for a bracket order to fill — skip
+        # Skip while a bracket is open or we already have a position
         if self.position or self.main_order is not None:
             super(TopstepMNQStrategy, self).next()
             return
 
-        # Calculate stop/target distances in NQ index points
-        stop_pts = dollars_to_points(self.p.risk_dollars, self.p.contracts)
+        stop_pts   = dollars_to_points(self.p.risk_dollars,   self.p.contracts)
         target_pts = dollars_to_points(self.p.profit_dollars, self.p.contracts)
         entry = self.data.close[0]
 
-        if self.crossover > 0:   # EMA50 crosses above EMA200 → long
-            stop = round(entry - stop_pts, 2)
+        if self.crossover > 0:       # EMA50 crosses above EMA200 → long
+            stop   = round(entry - stop_pts,   2)
             target = round(entry + target_pts, 2)
-            self.log('LONG  entry≈{:.2f}  stop={:.2f}  target={:.2f}'.format(
+            self.log('LONG   entry≈{:.2f}  stop={:.2f}  target={:.2f}'.format(
                 entry, stop, target))
             bracket = self.buy_bracket(
-                size=self.p.contracts,
-                stopprice=stop,
-                limitprice=target,
-            )
+                size=self.p.contracts, stopprice=stop, limitprice=target)
             self.main_order = bracket[0]
 
-        elif self.crossover < 0:  # EMA50 crosses below EMA200 → short
-            stop = round(entry + stop_pts, 2)
+        elif self.crossover < 0:     # EMA50 crosses below EMA200 → short
+            stop   = round(entry + stop_pts,   2)
             target = round(entry - target_pts, 2)
-            self.log('SHORT entry≈{:.2f}  stop={:.2f}  target={:.2f}'.format(
+            self.log('SHORT  entry≈{:.2f}  stop={:.2f}  target={:.2f}'.format(
                 entry, stop, target))
             bracket = self.sell_bracket(
-                size=self.p.contracts,
-                stopprice=stop,
-                limitprice=target,
-            )
+                size=self.p.contracts, stopprice=stop, limitprice=target)
             self.main_order = bracket[0]
 
         super(TopstepMNQStrategy, self).next()
@@ -156,81 +219,72 @@ class TopstepMNQStrategy(EODPositionCloserMixin, bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            self.log('CLOSED  pnl={:.2f}  net={:.2f}'.format(
+            self.log('CLOSED  gross={:.2f}  net={:.2f}'.format(
                 trade.pnl, trade.pnlcomm))
 
 
+# ── Runner ───────────────────────────────────────────────────────────────────
+
 def run(args=None):
     parser = argparse.ArgumentParser(
-        description='Topstep MNQ EMA Crossover Backtest')
+        description='Topstep MNQ EMA Crossover Backtest',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--data', required=True,
-        help='Path to MNQ 5-minute OHLCV CSV file')
+        help='Path to MNQ 5-min CSV (ts_event,Open,High,Low,Close,Volume)')
     parser.add_argument(
-        '--fromdate', default=None,
-        help='Start date YYYY-MM-DD (default: all data)')
+        '--fromdate', default=None, metavar='YYYY-MM-DD',
+        help='Backtest start date (inclusive)')
     parser.add_argument(
-        '--todate', default=None,
-        help='End date YYYY-MM-DD (default: all data)')
+        '--todate', default=None, metavar='YYYY-MM-DD',
+        help='Backtest end date (inclusive)')
     parser.add_argument(
-        '--dtformat', default='%Y-%m-%d %H:%M:%S',
-        help='Datetime format string in your CSV (default: %%Y-%%m-%%d %%H:%%M:%%S)')
+        '--rth-only', action='store_true',
+        help='Restrict to Regular Trading Hours only (09:30-16:00 ET); default: all sessions')
     parser.add_argument(
-        '--ema-fast', type=int, default=50,
-        help='Fast EMA period (default: 50)')
+        '--ema-fast', type=int, default=50, metavar='N',
+        help='Fast EMA period')
     parser.add_argument(
-        '--ema-slow', type=int, default=200,
-        help='Slow EMA period (default: 200)')
+        '--ema-slow', type=int, default=200, metavar='N',
+        help='Slow EMA period')
     parser.add_argument(
-        '--contracts', type=int, default=3,
-        help='Contracts per trade (default: 3)')
+        '--contracts', type=int, default=3, metavar='N',
+        help='Contracts per trade')
     parser.add_argument(
-        '--risk', type=float, default=150.0,
-        help='Dollar risk per trade (default: 150)')
+        '--risk', type=float, default=150.0, metavar='$',
+        help='Dollar risk per trade (stop loss total)')
     parser.add_argument(
-        '--profit', type=float, default=150.0,
-        help='Dollar profit target per trade (default: 150)')
+        '--profit', type=float, default=150.0, metavar='$',
+        help='Dollar profit target per trade')
     parser.add_argument(
         '--printlog', action='store_true',
-        help='Print each trade signal to stdout')
+        help='Print each signal and closed trade to stdout')
     args = parser.parse_args(args)
 
+    rth_only = args.rth_only
     fromdate = (datetime.datetime.strptime(args.fromdate, '%Y-%m-%d')
                 if args.fromdate else None)
-    todate = (datetime.datetime.strptime(args.todate, '%Y-%m-%d')
-              if args.todate else None)
+    todate   = (datetime.datetime.strptime(args.todate, '%Y-%m-%d')
+                if args.todate else None)
 
-    # ── Cerebro ─────────────────────────────────────────────────────────────
+    # ── Cerebro ──────────────────────────────────────────────────────────────
     cerebro = bt.Cerebro()
 
-    # ── Data ────────────────────────────────────────────────────────────────
-    data_kwargs = dict(
-        dataname=args.data,
-        dtformat=args.dtformat,
-        timeframe=bt.TimeFrame.Minutes,
-        compression=5,
-        openinterest=-1,   # no OI column; set to -1 to ignore
-    )
-    if fromdate:
-        data_kwargs['fromdate'] = fromdate
-    if todate:
-        data_kwargs['todate'] = todate
-
-    data = bt.feeds.GenericCSVData(**data_kwargs)
+    # ── Data ─────────────────────────────────────────────────────────────────
+    data = load_mnq_csv(args.data, fromdate=fromdate,
+                        todate=todate, rth_only=rth_only)
     cerebro.adddata(data)
 
-    # ── Broker ──────────────────────────────────────────────────────────────
+    # ── Broker ───────────────────────────────────────────────────────────────
     STARTING_BALANCE = 50000.0
     cerebro.broker.setcash(STARTING_BALANCE)
-    cerebro.broker.addcommissioninfo(MNQFuturesCommInfo())
+    cerebro.broker.addcommissioninfo(MNQFuturesCommInfo(commission=0.74))
+    cerebro.broker.set_slippage_fixed(0.0)   # no slippage
 
-    # ── Sizer ───────────────────────────────────────────────────────────────
-    # Safety cap at 50 MNQ contracts (Topstep rule).
-    # The strategy passes size= explicitly to buy_bracket/sell_bracket,
-    # so this sizer only applies to any bare buy()/sell() calls.
+    # ── Sizer: max 50 MNQ contracts (Topstep rule) ───────────────────────────
     cerebro.addsizer(MaxContractsSizer, max_contracts=50, stake=args.contracts)
 
-    # ── Strategy ────────────────────────────────────────────────────────────
+    # ── Strategy ─────────────────────────────────────────────────────────────
     cerebro.addstrategy(
         TopstepMNQStrategy,
         ema_fast=args.ema_fast,
@@ -241,9 +295,8 @@ def run(args=None):
         printlog=args.printlog,
     )
 
-    # ── Analyzers ───────────────────────────────────────────────────────────
-
-    # Trailing drawdown: $2,000 limit; freeze at $3,000 profit (Topstep rule)
+    # ── Analyzers ────────────────────────────────────────────────────────────
+    # Trailing drawdown: $2,000 limit; freeze trailing at $3,000 profit
     cerebro.addanalyzer(
         PropFirmDrawDown,
         _name='propfirm',
@@ -252,7 +305,6 @@ def run(args=None):
         starting_balance=STARTING_BALANCE,
         trailing_mode='eod',
     )
-
     # Consistency: no single day > 50% of total net profit
     cerebro.addanalyzer(
         ConsistencyAnalyzer,
@@ -260,86 +312,105 @@ def run(args=None):
         max_day_pct=50.0,
     )
 
-    # ── Run ─────────────────────────────────────────────────────────────────
-    print('=' * 60)
-    print('Topstep MNQ Combine — EMA{}/{} Crossover'.format(
+    # ── Header ───────────────────────────────────────────────────────────────
+    stop_pts = dollars_to_points(args.risk, args.contracts)
+    print('=' * 62)
+    print('  Topstep MNQ Combine — EMA{}/{} Crossover'.format(
         args.ema_fast, args.ema_slow))
-    print('=' * 60)
-    print('Account:           ${:,.0f}'.format(STARTING_BALANCE))
-    print('Instrument:        MNQ (Micro E-mini Nasdaq)')
-    print('Contracts/trade:   {}'.format(args.contracts))
-    print('Risk/trade:        ${:.0f}'.format(args.risk))
-    print('Target/trade:      ${:.0f}'.format(args.profit))
-    print('Stop/target pts:   {:.1f} NQ points'.format(
-        dollars_to_points(args.risk, args.contracts)))
-    print('EOD close by:      4:00 PM ET')
-    print('-' * 60)
+    print('=' * 62)
+    print('  Account balance : ${:>10,.0f}'.format(STARTING_BALANCE))
+    print('  Instrument      : MNQ (Micro E-mini Nasdaq 100)')
+    print('  Contracts/trade : {}'.format(args.contracts))
+    print('  Risk per trade  : ${:.0f}  ({:.0f} NQ pts)'.format(
+        args.risk, stop_pts))
+    print('  Target per trade: ${:.0f}  ({:.0f} NQ pts)'.format(
+        args.profit, stop_pts))
+    print('  Session         : {}'.format(
+        'RTH only  09:30–16:00 ET' if rth_only else 'All sessions (Asia + London + New York)'))
+    print('  EOD close at    : 4:00 PM ET')
+    print('  Fees            : $0.74/contract/side  (no slippage)')
+    print('-' * 62)
 
+    # ── Run ──────────────────────────────────────────────────────────────────
     results = cerebro.run()
     strat = results[0]
 
     ending_value = cerebro.broker.getvalue()
     net_pnl = ending_value - STARTING_BALANCE
 
-    dd = strat.analyzers.propfirm.get_analysis()
+    dd   = strat.analyzers.propfirm.get_analysis()
     cons = strat.analyzers.consistency.get_analysis()
 
-    # ── Summary ─────────────────────────────────────────────────────────────
-    print('\n' + '=' * 60)
-    print('RESULTS')
-    print('=' * 60)
-    print('Net P&L:           ${:,.2f}'.format(net_pnl))
-    print('Ending Balance:    ${:,.2f}'.format(ending_value))
+    # ── Results ──────────────────────────────────────────────────────────────
+    print('\n' + '=' * 62)
+    print('  RESULTS')
+    print('=' * 62)
+    print('  Net P&L        : ${:>10,.2f}'.format(net_pnl))
+    print('  Ending balance : ${:>10,.2f}'.format(ending_value))
 
     target_hit = net_pnl >= 3000.0
-    print('Profit Target:     {} (${:,.0f} / $3,000)'.format(
-        'PASSED ✓' if target_hit else 'not reached', max(net_pnl, 0)))
+    remaining  = max(3000.0 - net_pnl, 0.0)
+    print('  Profit target  : {}  (${:,.0f} / $3,000{})'.format(
+        'PASSED' if target_hit else 'not reached',
+        max(net_pnl, 0),
+        '' if target_hit else '  —  ${:,.0f} to go'.format(remaining)))
 
-    print('\n' + '-' * 60)
-    print('PROP FIRM RULE CHECK')
-    print('-' * 60)
+    print('\n' + '-' * 62)
+    print('  PROP FIRM RULE CHECK')
+    print('-' * 62)
 
-    # Trailing drawdown
+    # Trailing drawdown check
     dd_ok = not dd.breached
-    print('Trailing Drawdown: {} (max hit: ${:,.2f} / $2,000 limit)'.format(
-        'PASS ✓' if dd_ok else 'BREACHED ✗', dd.max_drawdown))
+    print('  Trailing DD    : {}  (worst: ${:,.2f} / $2,000 limit)'.format(
+        'PASS' if dd_ok else 'BREACHED', dd.max_drawdown))
     if dd.trailing_frozen:
-        print('                   Trailing stopped (profit target locked in)')
+        print('                   Trailing locked — profit target reached')
     if dd.breached:
-        print('                   Breach events: {}'.format(dd.breach_count))
+        print('                   Breach events : {}'.format(dd.breach_count))
+        for b in dd.breaches:
+            print('                     {} | val=${:,.2f} | DD=${:,.2f}'.format(
+                b['datetime'].strftime('%Y-%m-%d %H:%M'),
+                b['value'], b['drawdown']))
 
-    # Consistency
+    # Consistency check
     cons_ok = cons.consistent
-    print('Consistency Rule:  {}'.format(
-        'PASS ✓' if cons_ok else 'VIOLATED ✗'))
+    print('  Consistency    : {}'.format('PASS' if cons_ok else 'VIOLATED'))
     if not cons_ok:
         for v in cons.violations:
-            print('  Violation {}: ${:,.2f} ({:.1f}% of net profit)'.format(
+            print('    {} | ${:,.2f} ({:.1f}% of net profit)'.format(
                 v['date'], v['pnl'], v['pct']))
 
-    # Overall
-    print('-' * 60)
+    # Overall verdict
+    print('-' * 62)
     all_pass = target_hit and dd_ok and cons_ok
-    print('COMBINE STATUS:    {}'.format(
-        'PASSED — all rules met!' if all_pass else 'FAILED — see violations above'))
+    if all_pass:
+        print('  COMBINE STATUS : PASSED — all rules met!')
+    else:
+        failed = []
+        if not target_hit: failed.append('profit target not reached')
+        if not dd_ok:      failed.append('drawdown limit breached')
+        if not cons_ok:    failed.append('consistency rule violated')
+        print('  COMBINE STATUS : FAILED ({})'.format(', '.join(failed)))
 
-    # ── Daily P&L breakdown ─────────────────────────────────────────────────
+    # ── Daily P&L breakdown ──────────────────────────────────────────────────
     if cons.daily_pnl:
-        print('\n' + '-' * 60)
-        print('DAILY P&L BREAKDOWN')
-        print('-' * 60)
+        print('\n' + '-' * 62)
+        print('  DAILY P&L BREAKDOWN')
+        print('-' * 62)
         for date in sorted(cons.daily_pnl):
             pnl = cons.daily_pnl[date]
-            flag = ''
+            note = ''
             if cons.net_pnl > 0:
                 pct = 100.0 * pnl / cons.net_pnl
-                flag = '  ← {:.1f}%'.format(pct)
+                note = '  ({:.1f}%)'.format(pct)
                 if pct > 50.0:
-                    flag += ' VIOLATION'
-            print('  {}: ${:,.2f}{}'.format(date, pnl, flag))
+                    note += '  ← CONSISTENCY VIOLATION'
+            print('  {}  ${:>9,.2f}{}'.format(date, pnl, note))
+
         if cons.best_day:
-            print('\nBest day: {} — ${:,.2f}'.format(
+            print('\n  Best day : {} — ${:,.2f}'.format(
                 cons.best_day['date'], cons.best_day['pnl']))
+        print('  Trading days : {}'.format(len(cons.daily_pnl)))
 
 
 if __name__ == '__main__':
